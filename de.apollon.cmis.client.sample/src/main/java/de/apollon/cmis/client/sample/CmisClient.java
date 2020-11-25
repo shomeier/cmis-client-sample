@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-
 import org.apache.chemistry.opencmis.client.SessionFactoryFinder;
 import org.apache.chemistry.opencmis.client.api.CmisObject;
 import org.apache.chemistry.opencmis.client.api.Document;
@@ -29,22 +28,28 @@ import org.apache.chemistry.opencmis.commons.enums.IncludeRelationships;
 /**
  * @author SHomeier
  */
-public class CmisClient
-{
+public class CmisClient {
 	private static Properties props = new Properties();
 
 	// cmis supports paging which is perfekt for handling thousands of objects
 	private static int DEFAULT_MAX_ITEMS_PER_PAGE = 25;
 
-	public static void main(String[] args) throws ClassNotFoundException, InstantiationException
-	{
+	public static void main(String[] args) throws Exception {
+
 		CmisClient cmisClient = new CmisClient();
+		cmisClient.sampleUsage();
+	}
+
+	public CmisClient() {
+		readProperties();
+	}
+
+	public void sampleUsage() throws Exception {
 
 		// connect to cmis server and iterate over all repositories
-		Map<String, String> connectionParams = cmisClient.createDefaultConnectionParams();
+		Map<String, String> connectionParams = createDefaultConnectionParams();
 		List<Repository> repositories = SessionFactoryFinder.find().getRepositories(connectionParams);
-		for (Repository repository : repositories)
-		{
+		for (Repository repository : repositories) {
 			System.out.println("Found repository: " + repository.getName());
 		}
 
@@ -57,51 +62,48 @@ public class CmisClient
 		System.out.println("Repository supports descendants: " + capabilities.isGetDescendantsSupported());
 
 		Session session = repository.createSession();
-		OperationContext opCtx = cmisClient.getOpCtx(session);
+		OperationContext opCtx = getOpCtx(session);
 
 		// ... list root folder of first repository
 		Folder rootFolder = session.getRootFolder(opCtx);
 		ItemIterable<CmisObject> children = rootFolder.getChildren();
 		System.out.println();
-		for (CmisObject cmisObject : children)
-		{
-			if (cmisObject instanceof Document)
-			{
+		for (CmisObject cmisObject : children) {
+			if (cmisObject instanceof Document) {
 				System.out.println("Found Document: " + cmisObject.getName());
 			}
-			if (cmisObject instanceof Folder)
-			{
+			if (cmisObject instanceof Folder) {
 				System.out.println("Found Folder: " + cmisObject.getName());
 				// ... if you want to dive into a subfolder you can use Folder.getChildren()
 			}
 		}
 
 		// we want to do sth. with a cmis document so we try to find one ...
-		Document cmisDocument = cmisClient.getFirstCmisDocument(rootFolder, opCtx);
+		Document cmisDocument = getFirstCmisDocument(rootFolder, opCtx);
 
 		// ... we then can ask for the metadata/properties of this object ...
 		List<Property<?>> properties = cmisDocument.getProperties();
 		System.out.println("\nThe CMIS Document '" + cmisDocument.getName() + "' has the following metadata: ");
-		for (Property<?> property : properties)
-		{
+		for (Property<?> property : properties) {
 			System.out.println(property.getId() + " -> " + property.getFirstValue());
 		}
 		System.out.println();
 
 		// ... now we want to save the content stream to local hard disk
-		cmisClient.writeContenStreamToFile(cmisDocument.getContentStream());
+		writeContenStreamToFile(cmisDocument.getContentStream());
 
 		// ... now we get all renditions/previews for this document and write them to hard disk
 		List<Rendition> renditions = cmisDocument.getRenditions();
-		System.out.println("\nFound " + renditions.size() + " renditions/previews for document: " + cmisDocument.getName());
-		for (Rendition rendition : renditions)
-		{
+		System.out.println(
+				"\nFound " + renditions.size() + " renditions/previews for document: " + cmisDocument.getName());
+		for (Rendition rendition : renditions) {
 			System.out.println("\nFound rendition of kind: " + rendition.getKind());
-			cmisClient.writeContenStreamToFile(rendition.getContentStream());
+			writeContenStreamToFile(rendition.getContentStream());
 		}
 
 		// if you know the path of an object you can also explicitly get it by its path
-		// cmis supports multifiling (same file in multiple folders like symlinks) so there could be multiple paths
+		// cmis supports multifiling (same file in multiple folders like symlinks) so there could be
+		// multiple paths
 		// we simply take the first one here
 		String path = cmisDocument.getPaths().get(0);
 		CmisObject objectByPath = session.getObjectByPath(path);
@@ -111,26 +113,15 @@ public class CmisClient
 		CmisObject objectById = session.getObject(id);
 	}
 
-	public CmisClient()
-	{
-		readProperties();
-	}
-
-	public Document getFirstCmisDocument(Folder folder, OperationContext opCtx)
-	{
+	public Document getFirstCmisDocument(Folder folder, OperationContext opCtx) {
 		ItemIterable<CmisObject> children = folder.getChildren(opCtx);
-		for (CmisObject cmisObject : children)
-		{
-			if (cmisObject instanceof Document)
-			{
+		for (CmisObject cmisObject : children) {
+			if (cmisObject instanceof Document) {
 				return (Document) cmisObject;
-			}
-			else if (cmisObject instanceof Folder)
-			{
+			} else if (cmisObject instanceof Folder) {
 				Folder fldr = (Folder) cmisObject;
 				CmisObject co = getFirstCmisDocument(fldr, opCtx);
-				if (co != null)
-				{
+				if (co != null) {
 					return (Document) co;
 				}
 			}
@@ -138,13 +129,14 @@ public class CmisClient
 		return null;
 	}
 
-	public Map<String, String> createDefaultConnectionParams()
-	{
+	public Map<String, String> createDefaultConnectionParams() {
 		Map<String, String> parameters = new HashMap<String, String>();
 		parameters.put(SessionParameter.USER, props.getProperty("user"));
 		parameters.put(SessionParameter.PASSWORD, props.getProperty("password"));
-		parameters.put(SessionParameter.ATOMPUB_URL, props.getProperty("url"));
-		parameters.put(SessionParameter.BINDING_TYPE, BindingType.ATOMPUB.value());
+		// parameters.put(SessionParameter.ATOMPUB_URL, props.getProperty("url"));
+		parameters.put(SessionParameter.BROWSER_URL, props.getProperty("url"));
+		// parameters.put(SessionParameter.BINDING_TYPE, BindingType.ATOMPUB.value());
+		parameters.put(SessionParameter.BINDING_TYPE, BindingType.BROWSER.value());
 
 		// if you want to explicit connect to a known repository then use SessionParameter.REPOSITORY_ID
 		// parameters.put(SessionParameter.REPOSITORY_ID, "repository_id_here");
@@ -152,13 +144,12 @@ public class CmisClient
 		return parameters;
 	}
 
-	public OperationContext getOpCtx(Session session)
-	{
+	public OperationContext getOpCtx(Session session) {
 		// create new session and operation context
 		OperationContext opContext = session.createOperationContext();
 		opContext.setMaxItemsPerPage(DEFAULT_MAX_ITEMS_PER_PAGE);
 		opContext.setIncludeAcls(false);
-		opContext.setIncludeAllowableActions(false);
+		opContext.setIncludeAllowableActions(true);
 		opContext.setIncludePolicies(false);
 		opContext.setIncludeRelationships(IncludeRelationships.NONE);
 		opContext.setRenditionFilterString("cmis:none");
@@ -168,53 +159,38 @@ public class CmisClient
 		return opContext;
 	}
 
-	public void writeContenStreamToFile(ContentStream cs)
-	{
+	public void writeContenStreamToFile(ContentStream cs) {
 		InputStream in = cs.getStream();
 		String targetPath = this.props.getProperty("temp_path") + File.separator + cs.getFileName();
 		File file = new File(targetPath);
 		System.out.println("Writing stream to file: " + file.getAbsolutePath());
-		try
-		{
+		try {
 			OutputStream out = new FileOutputStream(file);
 			byte[] buf = new byte[1024];
 			int len;
-			while (( len = in.read(buf) ) > 0)
-			{
+			while ((len = in.read(buf)) > 0) {
 				out.write(buf, 0, len);
 			}
 			out.close();
 			in.close();
-		}
-		catch (Exception e)
-		{
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}
 
-	private void readProperties()
-	{
+	private void readProperties() {
 		InputStream input = null;
-		try
-		{
+		try {
 			input = getClass().getClassLoader().getResourceAsStream("config.properties");
 			// load a properties file
 			props.load(input);
-		}
-		catch (IOException ioe)
-		{
+		} catch (IOException ioe) {
 			ioe.printStackTrace();
-		}
-		finally
-		{
-			if (input != null)
-			{
-				try
-				{
+		} finally {
+			if (input != null) {
+				try {
 					input.close();
-				}
-				catch (IOException ioe)
-				{
+				} catch (IOException ioe) {
 					ioe.printStackTrace();
 				}
 			}
